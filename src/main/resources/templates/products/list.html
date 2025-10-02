@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Products</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+<h1>Products</h1>
+<p><a href="/products/new">Create a new product</a></p>
+<table border="1" cellpadding="6" cellspacing="0">
+    <thead>
+    <tr>
+        <th>ID</th>
+        <th>Name</th>
+        <th>Category</th>
+        <th>Price</th>
+        <th>Quantity</th>
+    </tr>
+    </thead>
+    <tbody id="productsTableBody">
+    </tbody>
+</table>
+<script>
+    const requestUuid = crypto.randomUUID();
+
+    function fetchProducts(retries = 15, delay = 2000) {
+        console.log('Fetching products (retry #' + retries + ')');
+
+        if (retries <= 0) {
+            console.error('Maximum retries reached');
+            showStatus('Failed to load products. Please try again later.');
+            return;
+        }
+
+        $.ajax({
+            url: '/api/products/sync?uuid=' + encodeURIComponent(requestUuid) + '&limit=10&offset=0',
+            method: 'GET',
+            success: function (data) {
+                console.log('Products fetched:', data);
+                const products = Array.isArray(data)
+                    ?
+                    data
+                    : Array.isArray(data?.products) ? data.products : null;
+
+                if (products && products.length > 0) {
+                    updateTable(products);
+                    showStatus('');
+                } else {
+                    const msg = typeof data === 'string'
+                        ? data
+                        : (data && data.status) ? data.status : 'PENDING';
+                    showStatus('Loading... ' + msg);
+                    setTimeout(() => fetchProducts(retries - 1, delay), delay);
+                }
+            },
+            error: function (xhr, status, error) {
+                console.error('Failed to fetch products:', error);
+                setTimeout(() => fetchProducts(retries - 1, delay), delay);
+            }
+        });
+    }
+
+    function updateTable(products) {
+        const tbody = $('#productsTableBody');
+        tbody.empty();
+
+        products.forEach(function (p) {
+            tbody.append(`
+                <tr>
+                    <td>${p.id ?? ''}</td>
+                    <td>${p.name ?? ''}</td>
+                    <td>${p.category ?? ''}</td>
+                    <td>${p.price ?? ''}</td>
+                    <td>${p.quantity ?? ''}</td>
+                </tr>
+            `);
+        });
+    }
+
+    function showStatus(text) {
+        let el = document.getElementById('statusLine');
+        if (!el) {
+            el = document.createElement('p');
+            el.id = 'statusLine';
+            document.body.insertBefore(el, document.querySelector('table'));
+        }
+        el.textContent = text || '';
+    }
+
+    $(document).ready(function () {
+        fetchProducts();
+    });
+</script>
+</body>
+</html>

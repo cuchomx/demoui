@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <title>Error</title>
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.3/css/bootstrap.min.css}" />
+</head>
+<body class="container py-4">
+<h1 class="text-danger">Error [[${status}]] - [[${error}]]</h1>
+<p th:text="${message}">An error occurred</p>
+<p><a class="btn btn-secondary" th:href="@{/products}">Back to products</a></p>
+</body>
+</html>

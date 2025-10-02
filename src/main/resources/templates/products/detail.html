@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <title>Product Detail</title>
+</head>
+<body>
+<h1>Product Detail</h1>
+<div>
+    <p><strong>ID:</strong> <span th:text="${product.id}">1</span></p>
+    <p><strong>Name:</strong> <span th:text="${product.name}">Name</span></p>
+    <p><strong>Description:</strong> <span th:text="${product.description}">Description</span></p>
+    <p><strong>Category:</strong> <span th:text="${product.category}">Category</span></p>
+    <p><strong>Price:</strong> <span th:text="${product.price}">0.00</span></p>
+    <p><strong>Quantity:</strong> <span th:text="${product.quantity}">0</span></p>
+    <p><strong>Active:</strong> <span th:text="${product.active}">true</span></p>
+    <p><strong>Created At:</strong> <span th:text="${#temporals.format(product.createdAt, 'yyyy-MM-dd HH:mm')}">now</span></p>
+    <p><strong>Updated At:</strong> <span th:text="${#temporals.format(product.updatedAt, 'yyyy-MM-dd HH:mm')}">now</span></p>
+</div>
+<p><a href="/products">Back to list</a></p>
+</body>
+</html>

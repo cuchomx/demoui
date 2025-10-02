@@ -1,0 +1,233 @@
+<!
+DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <title> Create Product</title>
+    <style>
+        .form-
+        input {
+            width: 280px;
+        }
+
+        .
+        hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+<form id="createForm" method="post">
+    <table>
+        <tr>
+            <td><label for="name">Name</label></td>
+            <td>
+                <input id="name" name="name" type="text" class="form-input"/>
+                <span hidden="hidden" id="nameError" class="error hidden">
+Name error</span>
+            </td>
+        </tr>
+        <tr>
+            <td><label for="description">Description</label></td>
+            <td>
+                <textarea id="description" name="description" rows="3" class="form-input"></textarea>
+                <span hidden="hidden" id="descriptionError" class="error hidden">
+Description error</span>
+            </td>
+        </tr>
+        <tr>
+            <td><label for="price">Price</label></td>
+            <td>
+                <input id="price" name="price" type="number" step="0.01" class="form-input"/>
+                <span hidden="hidden" id="priceError" class="error hidden">
+Price error</span>
+            </td>
+        </tr>
+        <tr>
+            <td><label for="quantity">Quantity</label></td>
+            <td>
+                <input id="quantity" name="quantity" type="number" class="form-input"/>
+                <span hidden="hidden" id="quantityError" class="error hidden">
+Quantity error</span>
+            </td>
+        </tr>
+        <tr>
+            <td><label for="category">Category</label></td>
+            <td>
+                <select id="category" name="category" class="form-input">
+                    <option value="">--Select--</option>
+                    <option value="Electronics">Electronics</option>
+                    <option value="Clothing">Clothing</option>
+                    <option value="Books">Books</option>
+                    <option value="Home">Home</option>
+                    <option value="Sports">Sports</option>
+                </select>
+                <span hidden="hidden" id="categoryError" class="error hidden">
+Category error</span>
+            </td>
+        </tr>
+    </table>
+    <br></br>
+    <div>
+        <button type="submit">Save</button>
+    </div>
+</form>
+
+<script>
+    (
+
+        function () {
+            var requestUuid = crypto.randomUUID();
+
+            function initializeForm() {
+                var form = document.getElementById('createForm');
+
+                if (!form) {
+                    console.error('Form element not found');
+                    return;
+                }
+
+                form.addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    handleFormSubmit(form);
+                });
+            }
+
+            function handleFormSubmit(form) {
+                console.log('Submitting form...');
+
+                var formData = new FormData(form);
+                var params = buildUrlParams(formData);
+
+                console.log('Form data:', params.toString());
+                submitProductRequest(params);
+            }
+
+            function buildUrlParams(formData) {
+                var params = new URLSearchParams();
+                var entries = formData.entries();
+                var entry = entries.next();
+
+                while (!entry.done) {
+                    params.append(entry.value[0], entry.value[1]);
+                    entry = entries.next();
+                }
+
+                return params;
+            }
+
+            function submitProductRequest(params) {
+                fetch('/api/product?uuid=' + encodeURIComponent(requestUuid), {
+                    method: 'POST',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+                    },
+                    body: params.toString(),
+                    credentials: 'same-origin'
+                }).then(function (response) {
+                    return handleCreateResponse(response);
+                }).catch(function (error) {
+                    handleError(error);
+                });
+            }
+
+            function handleCreateResponse(response) {
+                console.log('Create response status:', response.status);
+
+                if (!response.ok) {
+                    throw new Error('Server returned status: ' + response.status);
+                }
+
+                return response.json()
+                    .then(function (json) {
+                        handleJsonResponse(json);
+                    })
+                    .catch(function () {
+                        handleInvalidResponse();
+                    });
+            }
+
+            function handleJsonResponse(json) {
+                if (json && json.id) {
+                    handleCreateSuccess(json.id);
+                } else {
+                    console.warn('Unexpected JSON response:', json);
+                    alert('Unexpected response from server');
+                }
+            }
+
+            function handleInvalidResponse() {
+                console.error('Failed to create product: Invalid response from server');
+                alert('Failed to create product: Invalid response from server');
+            }
+
+            function handleError(error) {
+                console.error('Failed to create product:', error);
+                alert('Failed to create product: ' + error.message);
+            }
+
+            function handleCreateSuccess(tempId) {
+                console.log('Request to create a product with ID:', tempId);
+                pollForCreatedId(tempId, 10);
+            }
+
+            function pollForCreatedId(tempId, retries) {
+                if (retries <= 0) {
+                    console.error('Polling timeout for product:', tempId);
+                    alert('Product creation is taking longer than expected. Please check later.');
+                    return;
+                }
+
+                console.log('Polling for product ID:', tempId, 'Retries left:', retries);
+
+                fetch('/api/product/' + encodeURIComponent(tempId), {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    credentials: 'same-origin'
+                })
+                    .then(function (response) {
+                        console.log('Polling response status:', response.status);
+                        return handlePollingResponse(response, tempId, retries);
+                    })
+                    .catch(function (err) {
+                        console.error('Polling error:', err);
+                        retryPolling(tempId, retries);
+                    });
+            }
+
+            function handlePollingResponse(response, tempId, retries) {
+                if (response.status === 201) {
+                    return response.text()
+                        .then(function (productId) {
+                            console.log('Product created with ID:', productId);
+                            alert('Product created successfully! ID: ' + productId);
+                            window.location.href = '/products';
+                        });
+                } else if (response.status === 200) {
+                    console.log('Product still in progress, polling again...');
+                    retryPolling(tempId, retries);
+                } else {
+                    console.warn('Unexpected status:', response.status);
+                    retryPolling(tempId, retries);
+                }
+            }
+
+            function retryPolling(tempId, retries) {
+                setTimeout(function () {
+                    pollForCreatedId(tempId, retries - 1);
+                }, 1000);
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initializeForm);
+            } else {
+                initializeForm();
+            }
+        })();
+</script>
+</body>
+</html>
