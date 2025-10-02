@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.DeleteMessageRequest;
 import software.amazon.awssdk.services.sqs.model.Message;
+import software.amazon.awssdk.utils.StringUtils;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -22,6 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+
 
 @Slf4j
 @RequiredArgsConstructor
@@ -40,8 +42,8 @@ public class ProductFindAllSyncQueueConsumer implements IProductFindAllSyncQueue
     @PostConstruct
     public void validateConfiguration() {
 
-        if (queueUrl == null || queueUrl.isBlank()) {
-            throw new IllegalStateException("aws.sqs.queue.create.url must be configured");
+        if (StringUtils.isBlank(queueUrl)) {
+            throw new IllegalStateException("aws.sqs.queue.find.web.consumer.url must be configured");
         }
         try {
             var uri = new URI(queueUrl);
@@ -61,9 +63,12 @@ public class ProductFindAllSyncQueueConsumer implements IProductFindAllSyncQueue
         log.debug("ProductFindAllSyncQueueConsumer::consume - Polling SQS queue {} for correlationId: {}", queueUrl, correlationId);
 
         if (!ParameterValidationUtils.isValidCorrelationIdValue(correlationId)) {
-            log.error("ProductFindAllSyncQueueConsumer::consume - Invalid correlationId");
+            log.warn("ProductFindAllSyncQueueConsumer::consume - Invalid correlationId");
             return CompletableFuture.completedFuture(List.of());
         }
+
+        // accumulate across attempts
+        List<ProductResponseDto> accumulated = new ArrayList<>();
 
         for (int attempt = 1; attempt <= MAX_POLL_ATTEMPTS; attempt++) {
             log.debug("ProductFindAllSyncQueueConsumer::consume - Polling attempt {}/{} for correlationId: {}",
@@ -72,14 +77,20 @@ public class ProductFindAllSyncQueueConsumer implements IProductFindAllSyncQueue
                     correlationId
             );
 
-            List<Message> messages = sqsClient.receiveMessage(ReceiveMessageQueueUtils.buildReceiveRequest(queueUrl)).messages();
+            var receiveRequest = ReceiveMessageQueueUtils.buildReceiveRequest(queueUrl);
+            List<Message> messages;
+            try {
+                var response = sqsClient.receiveMessage(receiveRequest);
+                messages = response != null ? response.messages() : List.of();
+            } catch (Exception e) {
+                log.error("ProductFindAllSyncQueueConsumer::consume - SQS receive failed on attempt {}: {}", attempt, e.getMessage(), e);
+                messages = List.of();
+            }
 
             if (messages == null || messages.isEmpty()) {
                 log.trace("ProductFindAllSyncQueueConsumer::consume - No messages received on attempt {}", attempt);
                 continue;
             }
-
-            List<ProductResponseDto> allProducts = new ArrayList<>();
 
             for (Message m : messages) {
                 try {
@@ -87,12 +98,10 @@ public class ProductFindAllSyncQueueConsumer implements IProductFindAllSyncQueue
 
                     String messageCorrelationId = QueueAttributeUtils.extractCorrelationId(m);
                     if (messageCorrelationId == null || messageCorrelationId.isBlank()) {
-                        log.warn("ProductFindAllSyncQueueConsumer::consume - Missing CORRELATION_ID for messageId={}",
-                                m.messageId());
+                        log.warn("ProductFindAllSyncQueueConsumer::consume - Missing CORRELATION_ID for messageId={}", m.messageId());
                         continue;
                     }
 
-                    // Only process messages matching the requested correlationId
                     if (!correlationId.equals(messageCorrelationId)) {
                         log.debug("ProductFindAllSyncQueueConsumer::consume - Skipping message with different correlationId: {} (expected: {})",
                                 messageCorrelationId, correlationId);
@@ -106,37 +115,34 @@ public class ProductFindAllSyncQueueConsumer implements IProductFindAllSyncQueue
                         continue;
                     }
 
-                    log.info("ProductFindAllSyncQueueConsumer::consume - Response received - messageId={}, correlationId={}, body={}",
-                            m.messageId(), messageCorrelationId, messageBody);
+                    log.debug("ProductFindAllSyncQueueConsumer::consume - Response received - messageId={}, correlationId={}, body.size={}",
+                            m.messageId(), messageCorrelationId, messageBody.length());
 
                     List<ProductResponseDto> products = parseProducts(messageBody);
                     if (products != null && !products.isEmpty()) {
-                        allProducts.addAll(products);
+                        accumulated.addAll(products);
                         products.stream()
                                 .filter(Objects::nonNull)
                                 .forEach(product -> log.info("ProductFindAllSyncQueueConsumer::consume - product: {}", product));
+                        delete(m.receiptHandle());
+                        log.info("ProductFindAllSyncQueueConsumer::consume - Processed message for correlationId: {}, accumulated total: {}",
+                                correlationId, accumulated.size());
+                    } else {
+                        log.warn("ProductFindAllSyncQueueConsumer::consume - Parsed empty products for messageId={}, keeping message for retry", m.messageId());
                     }
 
-                    delete(m.receiptHandle());
-
-                    log.info("ProductFindAllSyncQueueConsumer::consume - Successfully processed message for correlationId: {}, total products: {}",
-                            correlationId, allProducts.size());
-
-                    return CompletableFuture.completedFuture(allProducts);
-
                 } catch (Exception e) {
-                    log.error("ProductFindAllSyncQueueConsumer::consume - Failed to process message: {}", e.getMessage(), e);
+                    log.error("ProductFindAllSyncQueueConsumer::consume - Failed to process messageId={}: {}", m.messageId(), e.getMessage(), e);
                 }
             }
 
-            // If we found matching messages, return the accumulated products
-            if (!allProducts.isEmpty()) {
-                log.debug("ProductFindAllSyncQueueConsumer::consume - Returning {} products for correlationId: {}",
-                        allProducts.size(),
-                        correlationId
-                );
-                return CompletableFuture.completedFuture(allProducts);
+            // if we collected any, return after this poll
+            if (!accumulated.isEmpty()) {
+                log.debug("ProductFindAllSyncQueueConsumer::consume - Returning {} products for correlationId: {}", accumulated.size(), correlationId);
+                return CompletableFuture.completedFuture(accumulated);
             }
+
+            pauseThread();
         }
 
         log.info("ProductFindAllSyncQueueConsumer::consume - No matching messages found for correlationId: {} after {} attempts",
@@ -145,6 +151,15 @@ public class ProductFindAllSyncQueueConsumer implements IProductFindAllSyncQueue
         );
 
         return CompletableFuture.completedFuture(List.of());
+    }
+
+    private static void pauseThread() {
+        // small delay before next attempt to avoid hot-loop if long polling not set
+        try {
+            Thread.sleep(100L);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private List<ProductResponseDto> parseProducts(String messageBody) {

@@ -31,7 +31,7 @@ public class ProductFindAllQueueProducer implements IProductFindAllQueueProducer
 
     @PostConstruct
     public void validateConfiguration() {
-        if (queueUrl == null || queueUrl.isBlank()) {
+        if (StringUtils.isBlank(queueUrl)) {
             throw new IllegalStateException("aws.sqs.queue.find.web.producer.url must be configured");
         }
         try {
