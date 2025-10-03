@@ -1,7 +1,7 @@
 package com.example.demo.biz.unit.products.findAll.queues.consumer.sync;
 
 import com.example.commons.dto.create.ProductResponseDto;
-import com.example.demo.biz.products.findAll.queues.consumer.sync.ProductFindAllSyncQueueConsumer;
+import com.example.demo.biz.products.findAll.queues.consumer.v2.ProductFindAllSyncQueueConsumer;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;

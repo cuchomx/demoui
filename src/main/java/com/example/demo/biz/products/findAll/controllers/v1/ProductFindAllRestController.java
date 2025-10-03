@@ -1,4 +1,4 @@
-package com.example.demo.biz.products.findAll.controllers;
+package com.example.demo.biz.products.findAll.controllers.v1;
 
 import com.example.commons.dto.find.ProductFindAllRequestDto;
 import com.example.commons.utils.ParameterValidationUtils;
@@ -18,7 +18,7 @@ import java.util.List;
 @Slf4j
 @RequiredArgsConstructor
 @RestController
-@RequestMapping("/api/products")
+@RequestMapping("/api/v1/products")
 public class ProductFindAllRestController {
 
     private static final int DEFAULT_LIMIT = 10;

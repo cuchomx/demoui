@@ -1,4 +1,4 @@
-package com.example.demo.biz.products.findAll.queues.consumer.sync;
+package com.example.demo.biz.products.findAll.queues.consumer.v2;
 
 import com.example.commons.dto.create.ProductResponseDto;
 import com.example.commons.utils.ParameterValidationUtils;

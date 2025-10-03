@@ -24,7 +24,7 @@
 <script>
     const requestUuid = crypto.randomUUID();
 
-    function fetchProducts(retries = 15, delay = 2000) {
+    function fetchProducts(retries = 1, delay = 2000) {
         console.log('Fetching products (retry #' + retries + ')');
 
         if (retries <= 0) {

@@ -1,6 +1,6 @@
 package com.example.demo.biz.unit.products.findAll.queues.consumer;
 
-import com.example.demo.biz.products.findAll.queues.consumer.IProductFindAllQueueConsumer;
+import com.example.demo.biz.products.findAll.queues.consumer.v1.IProductFindAllQueueConsumer;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;

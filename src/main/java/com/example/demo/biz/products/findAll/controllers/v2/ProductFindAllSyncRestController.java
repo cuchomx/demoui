@@ -1,9 +1,9 @@
-package com.example.demo.biz.products.findAll.controllers;
+package com.example.demo.biz.products.findAll.controllers.v2;
 
 import com.example.commons.dto.create.ProductResponseDto;
 import com.example.commons.dto.find.ProductFindAllRequestDto;
 import com.example.commons.utils.ParameterValidationUtils;
-import com.example.demo.biz.products.findAll.queues.consumer.sync.IProductFindAllSyncQueueConsumer;
+import com.example.demo.biz.products.findAll.queues.consumer.v2.IProductFindAllSyncQueueConsumer;
 import com.example.demo.biz.products.findAll.queues.producer.IProductFindAllQueueProducer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,7 +22,7 @@ import java.util.concurrent.TimeoutException;
 @Slf4j
 @RequiredArgsConstructor
 @RestController
-@RequestMapping("/api/products/sync")
+@RequestMapping("/api/v2/products")
 public class ProductFindAllSyncRestController {
 
     private final IProductFindAllSyncQueueConsumer iProductFindAllSyncQueueConsumer;

@@ -13,6 +13,7 @@ public enum ProductCacheService {
     INSTANCE;
 
     private static final int DEFAULT_CAPACITY = 128;
+    
     private static final ConcurrentHashMap<String, Object> cache = new ConcurrentHashMap<>(DEFAULT_CAPACITY);
 
     public static void add(String key, RequestStatus value) {

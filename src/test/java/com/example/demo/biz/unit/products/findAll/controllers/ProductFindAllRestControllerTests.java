@@ -3,7 +3,7 @@ package com.example.demo.biz.unit.products.findAll.controllers;
 import com.example.commons.dto.find.ProductFindAllRequestDto;
 import com.example.demo.biz.commons.dto.IdResponse;
 import com.example.demo.biz.products.findAll.cache.ProductFindAllCacheService;
-import com.example.demo.biz.products.findAll.controllers.ProductFindAllRestController;
+import com.example.demo.biz.products.findAll.controllers.v1.ProductFindAllRestController;
 import com.example.demo.biz.products.findAll.queues.producer.IProductFindAllQueueProducer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;

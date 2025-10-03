@@ -2,8 +2,8 @@ package com.example.demo.biz.unit.products.findAll.controllers;
 
 import com.example.commons.dto.create.ProductResponseDto;
 import com.example.commons.dto.find.ProductFindAllRequestDto;
-import com.example.demo.biz.products.findAll.controllers.ProductFindAllSyncRestController;
-import com.example.demo.biz.products.findAll.queues.consumer.sync.IProductFindAllSyncQueueConsumer;
+import com.example.demo.biz.products.findAll.controllers.v2.ProductFindAllSyncRestController;
+import com.example.demo.biz.products.findAll.queues.consumer.v2.IProductFindAllSyncQueueConsumer;
 import com.example.demo.biz.products.findAll.queues.producer.IProductFindAllQueueProducer;
 import org.junit.jupiter.api.Test;
 

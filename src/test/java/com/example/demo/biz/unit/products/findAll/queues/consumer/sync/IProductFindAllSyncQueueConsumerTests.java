@@ -1,7 +1,7 @@
 package com.example.demo.biz.unit.products.findAll.queues.consumer.sync;
 
 import com.example.commons.dto.create.ProductResponseDto;
-import com.example.demo.biz.products.findAll.queues.consumer.sync.IProductFindAllSyncQueueConsumer;
+import com.example.demo.biz.products.findAll.queues.consumer.v2.IProductFindAllSyncQueueConsumer;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
