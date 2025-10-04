@@ -1,16 +1,13 @@
 package com.example.demo.biz.products.findAll.queues.consumer.v3;
 
 import com.example.commons.dto.create.ProductResponseDto;
+import com.example.commons.utils.ParameterValidationUtils;
 import com.example.demo.biz.products.findAll.controllers.v3.ThreadMapCacheService;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import software.amazon.awssdk.services.sqs.SqsClient;
-import software.amazon.awssdk.services.sqs.model.DeleteMessageRequest;
 
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -22,9 +19,7 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 public class ProductFindAllV3QueueConsumer implements IProductFindAllV3QueueConsumer {
 
-    private final ObjectMapper objectMapper;
-
-    private final SqsClient sqsClient;
+    private final AsyncQueueConsumerService consumerService;
 
     private static final Executor VIRTUAL_EXECUTOR =
             Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("find-all-v3-", 0).factory());
@@ -32,33 +27,53 @@ public class ProductFindAllV3QueueConsumer implements IProductFindAllV3QueueCons
     @Value("${aws.sqs.queue.find.web.consumer.url}")
     private String queueUrl;
 
+    private static final long TIMEOUT_SECONDS = 10L;
+
     @Override
     public List<ProductResponseDto> consume(String correlationId) {
 
-        AsyncQueueConsumerService consumerService = new AsyncQueueConsumerService(objectMapper, sqsClient);
+        log.info("ProductFindAllV3QueueConsumer::consume - Polling SQS queue {} for correlationId: {}", queueUrl, correlationId);
+
+        if (!ParameterValidationUtils.isValidCorrelationIdValue(correlationId)) {
+            log.warn("ProductFindAllV3QueueConsumer::consume - Invalid correlationId");
+            return List.of();
+        }
+
+        log.info("ProductFindAllV3QueueConsumer::consume - Calling consumerService.call() for correlationId={}", correlationId);
 
         try {
-            CompletableFuture<List<ProductResponseDto>> future = CompletableFuture
-                    .supplyAsync(() -> consumerService.call(correlationId), VIRTUAL_EXECUTOR)
-                    .orTimeout(10, TimeUnit.of(ChronoUnit.SECONDS))
-                    .thenCompose(cf -> cf);
+            // Ensure a waiting future exists for the correlationId
+            ThreadMapCacheService.createIfAbsent(correlationId);
 
-            future.whenComplete((products, throwable) -> {
-                if (throwable != null) {
-                    log.error("ProductFindAllV3QueueConsumer::consume - Failed for correlationId={}: {}", correlationId, throwable.getMessage(), throwable);
-                    ThreadMapCacheService.completeExceptionally(correlationId, throwable);
-                } else {
-                    if (products == null) {
-                        var npe = new NullPointerException("Null products result");
-                        log.error("ProductFindAllV3QueueConsumer::consume - Null result for correlationId={}", correlationId, npe);
-                        ThreadMapCacheService.completeExceptionally(correlationId, npe);
-                    } else {
-                        ThreadMapCacheService.complete(correlationId, products);
-                    }
-                }
-            });
+            CompletableFuture<List<ProductResponseDto>> pipeline =
+                    CompletableFuture
+                            .supplyAsync(() -> consumerService.call(correlationId), VIRTUAL_EXECUTOR)
+                            .thenCompose(f -> f)
+                            .orTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                            .whenComplete((products, throwable) -> {
+                                if (throwable != null) {
+                                    log.error("ProductFindAllV3QueueConsumer::consume - Failed for correlationId={}: {}", correlationId, throwable.getMessage(), throwable);
+                                    ThreadMapCacheService.completeExceptionally(correlationId, throwable);
+                                } else {
+                                    int size = products != null ? products.size() : 0;
+                                    log.info("ProductFindAllV3QueueConsumer::consume - Processed {} products for correlationId={}", size, correlationId);
+                                    if (products != null && !products.isEmpty()) {
+                                        products.stream().limit(5).forEach(p -> log.debug("ProductFindAllV3QueueConsumer::consume - product: {}", p));
+                                    }
+                                    ThreadMapCacheService.complete(correlationId, products != null ? products : List.of());
+                                }
+                            });
 
-            return List.of();
+            log.info("ProductFindAllV3QueueConsumer::consume - Waiting up to {}s for future for correlationId={}", TIMEOUT_SECONDS, correlationId);
+
+            // Synchronous contract: wait and return results (or empty on timeout/error)
+            try {
+                return pipeline.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                log.error("ProductFindAllV3QueueConsumer::consume - Timeout or error awaiting pipeline for correlationId={}: {}", correlationId, e.getMessage(), e);
+                return List.of();
+            }
+
         } catch (Exception e) {
             log.error("ProductFindAllV3QueueConsumer::consume - Unexpected exception for correlationId={}: {}", correlationId, e.getMessage(), e);
             ThreadMapCacheService.completeExceptionally(correlationId, e);
@@ -66,18 +81,4 @@ public class ProductFindAllV3QueueConsumer implements IProductFindAllV3QueueCons
         }
     }
 
-    @Override
-    public void delete(String receiptHandle) {
-        try {
-            var deleteRequest = DeleteMessageRequest.builder()
-                    .queueUrl(queueUrl)
-                    .receiptHandle(receiptHandle)
-                    .build();
-            sqsClient.deleteMessage(deleteRequest);
-            log.info("ProductFindAllV3QueueConsumer::delete - Deleted message with receiptHandle={}", receiptHandle);
-        } catch (Exception e) {
-            log.error("ProductFindAllV3QueueConsumer::delete - Exception deleting receiptHandle={}: {}",
-                    receiptHandle, e.getMessage(), e);
-        }
-    }
 }

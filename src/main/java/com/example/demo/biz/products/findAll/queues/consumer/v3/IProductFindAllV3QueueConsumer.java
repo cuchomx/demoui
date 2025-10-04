@@ -8,6 +8,4 @@ public interface IProductFindAllV3QueueConsumer {
 
     List<ProductResponseDto> consume(String correlationId);
 
-    void delete(String receiptHandle);
-
 }

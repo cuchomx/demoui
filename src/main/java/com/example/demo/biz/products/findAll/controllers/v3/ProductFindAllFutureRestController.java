@@ -58,11 +58,14 @@ public class ProductFindAllFutureRestController {
             return ResponseEntity.status(HttpStatus.ACCEPTED).body("Processing");
         }
 
+        log.info("ProductFindAllFutureRestController::findAll - Generated from product UUID: {}", correlationId);
         IdempotentRequestCache.INSTANCE.putIfAbsent(correlationId, IdempotentRequestCache.Status.RECEIVED);
 
         ProductFindAllRequestDto requestDto = buildRequestDto(correlationId, safeLimit, safeOffset);
         try {
+            log.info("ProductFindAllFutureRestController::findAll - Producing for correlationId: {}", correlationId);
             productFindAllQueueProducer.produce(correlationId, requestDto);
+            log.info("ProductFindAllFutureRestController::findAll - Consuming for correlationId: {}", correlationId);
             productFindAllV3QueueConsumer.consume(correlationId);
         } catch (Exception e) {
             log.error("ProductFindAllFutureRestController::findAll - Error producing/consuming for {}", correlationId, e);
@@ -70,10 +73,10 @@ public class ProductFindAllFutureRestController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to enqueue request");
         }
 
+        log.info("ProductFindAllFutureRestController::findAll - Waiting for response for correlationId: {}", correlationId);
         IdempotentRequestCache.INSTANCE.putIfAbsent(correlationId, IdempotentRequestCache.Status.PROCESSING);
 
         try {
-            log.info("ProductFindAllFutureRestController::findAll - Waiting for response for correlationId: {}", correlationId);
             CompletableFuture<List<ProductResponseDto>> responseFuture = ThreadMapCacheService.createIfAbsent(correlationId);
             List<ProductResponseDto> response = responseFuture
                     .orTimeout(RESPONSE_TIMEOUT.toSeconds(), TimeUnit.SECONDS)
@@ -86,6 +89,7 @@ public class ProductFindAllFutureRestController {
             IdempotentRequestCache.INSTANCE.remove(correlationId);
             return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body("Timed out waiting for response");
         } finally {
+            log.info("ProductFindAllFutureRestController::findAll - Removing from cache for correlationId: {}", correlationId);
             ThreadMapCacheService.remove(correlationId);
         }
     }
