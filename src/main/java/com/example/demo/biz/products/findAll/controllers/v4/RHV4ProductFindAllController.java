@@ -21,8 +21,8 @@ import java.util.List;
 @Slf4j
 @RequiredArgsConstructor
 @RestController
-@RequestMapping("/api/v4/products")
-public class ProductFindAllV4Controller {
+@RequestMapping("/api/v6/products")
+public class RHV4ProductFindAllController {
 
     private static final int DEFAULT_LIMIT = 10;
     private static final int DEFAULT_OFFSET = 0;
@@ -30,7 +30,7 @@ public class ProductFindAllV4Controller {
     private static final int MIN_OFFSET = 0;
 
     private final IProductFindAllQueueProducer productFindAllQueueProducer;
-    private final IProductFindAllV4QueueService productFindAllV4QueueService;
+    private final IProductFindAllV4QueueService iProductFindAllV4QueueService;
 
     @GetMapping
     public HttpEntity<List<ProductResponseDto>> findAll(
@@ -40,28 +40,44 @@ public class ProductFindAllV4Controller {
     ) {
         log.info("ProductFindAllV4Controller::findAll - Request UUID: {}", correlationId);
 
-        ResponseEntity<List<ProductResponseDto>> validationError = validateRequest(correlationId);
-        if (validationError != null) {
-            return validationError;
+        if (ParameterValidationUtils.isNotValidCorrelationId(correlationId)) {
+            log.error("ProductFindAllV4Controller::findAll - Invalid correlation id value - {}", correlationId);
+            return ResponseEntity.badRequest().body(List.of());
         }
 
+        if (IdempotentRequestCache.INSTANCE.isInProgress(correlationId)) {
+            log.info("ProductFindAllV4Controller::findAll - correlationId {} is in progress", correlationId);
+            return ResponseEntity.status(HttpStatus.ACCEPTED).body(List.of());
+        }
+
+        log.info("ProductFindAllV4Controller::findAll - Generated from product correlationId: {}", correlationId);
         IdempotentRequestCache.INSTANCE.putIfAbsent(correlationId, IdempotentRequestCache.Status.RECEIVED);
-        ProductFindAllRequestDto requestDto = buildRequestDto(correlationId, limit, offset);
+
+        ProductFindAllRequestDto requestDto = new ProductFindAllRequestDto(
+                correlationId,
+                limit == null ? DEFAULT_LIMIT : limit,
+                offset == null ? DEFAULT_OFFSET : offset
+        );
 
         try {
+
             log.info("ProductFindAllV4Controller::findAll - Producing for correlationId: {}", correlationId);
             productFindAllQueueProducer.produce(correlationId, requestDto);
 
             log.info("ProductFindAllV4Controller::findAll - Consuming for correlationId: {}", correlationId);
-            List<ProductResponseDto> products = productFindAllV4QueueService.consume(correlationId);
+            List<ProductResponseDto> products = iProductFindAllV4QueueService.consume(correlationId);
 
             if (products == null || products.isEmpty()) {
                 log.warn("ProductFindAllV4Controller::findAll - No products yet for correlationId: {} returning accepted", correlationId);
                 return ResponseEntity.status(HttpStatus.ACCEPTED).body(List.of());
             }
 
-            log.info("ProductFindAllV4Controller::findAll - Returning {} products for correlationId: {}", products.size(), correlationId);
+            log.info("ProductFindAllV4Controller::findAll - Returning {} products for correlationId: {}",
+                    products.size(),
+                    correlationId
+            );
             return ResponseEntity.ok(products);
+
         } catch (Exception e) {
             log.error("ProductFindAllV4Controller::findAll - Error producing/consuming for {}", correlationId, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(List.of());
@@ -70,22 +86,5 @@ public class ProductFindAllV4Controller {
         }
     }
 
-    private ResponseEntity<List<ProductResponseDto>> validateRequest(String correlationId) {
-        if (ParameterValidationUtils.isNotValidCorrelationId(correlationId)) {
-            log.error("ProductFindAllV4Controller::findAll - Invalid correlation id value - {}", correlationId);
-            return ResponseEntity.badRequest().body(List.of());
-        }
-        if (IdempotentRequestCache.INSTANCE.isInProgress(correlationId)) {
-            log.info("ProductFindAllV4Controller::findAll - correlationId {} is in progress", correlationId);
-            return ResponseEntity.status(HttpStatus.ACCEPTED).body(List.of());
-        }
-        log.info("ProductFindAllV4Controller::findAll - Generated from product correlationId: {}", correlationId);
-        return null;
-    }
 
-    private ProductFindAllRequestDto buildRequestDto(String correlationId, Integer limit, Integer offset) {
-        int normalizedLimit = (limit == null || limit < MIN_LIMIT) ? DEFAULT_LIMIT : limit;
-        int normalizedOffset = (offset == null || offset < MIN_OFFSET) ? DEFAULT_OFFSET : offset;
-        return new ProductFindAllRequestDto(correlationId, normalizedLimit, normalizedOffset);
-    }
 }
