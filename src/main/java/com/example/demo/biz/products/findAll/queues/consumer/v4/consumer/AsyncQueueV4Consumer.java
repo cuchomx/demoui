@@ -1,4 +1,4 @@
-package com.example.demo.biz.products.findAll.queues.consumer.v3;
+package com.example.demo.biz.products.findAll.queues.consumer.v4.consumer;
 
 
 import com.example.commons.dto.create.ProductResponseDto;
@@ -24,7 +24,7 @@ import java.util.concurrent.CompletableFuture;
 @RequiredArgsConstructor
 @Slf4j
 @Service
-public class AsyncQueueConsumerService implements AsyncQueueCall<List<ProductResponseDto>> {
+public class AsyncQueueV4Consumer implements IAsyncQueueV4Consumer<List<ProductResponseDto>> {
 
 
     private final ObjectMapper objectMapper;
@@ -42,6 +42,12 @@ public class AsyncQueueConsumerService implements AsyncQueueCall<List<ProductRes
         try {
             var receiveRequest = ReceiveMessageQueueUtils.buildReceiveRequest(queueUrl, null);
 
+            log.info("AsyncQueueConsumerService::consume - Calling sqsClient.receiveMessage() for correlationId={}, attributeNames={}, messageAttributeNames={}:",
+                    correlationId,
+                    receiveRequest.attributeNamesAsStrings(),
+                    receiveRequest.messageAttributeNames()
+            );
+
             List<Message> messages = getMessages(receiveRequest);
             if (messages == null || messages.isEmpty()) {
                 log.trace("AsyncQueueConsumerService::consume - No messages received");
@@ -50,7 +56,7 @@ public class AsyncQueueConsumerService implements AsyncQueueCall<List<ProductRes
 
             List<ProductResponseDto> accumulated = new ArrayList<>();
 
-            log.info("==============================================================================================");
+            log.info("----------------------------------------------------------------------------------------------");
             log.info("AsyncQueueConsumerService::consume - polling SQS queue {} to find correlationId: {} - {} messages received",
                     queueUrl,
                     correlationId,
@@ -62,14 +68,14 @@ public class AsyncQueueConsumerService implements AsyncQueueCall<List<ProductRes
                     String messageCorrelationId = QueueAttributeUtils.extractCorrelationId(m);
 
                     if (!correlationId.equals(messageCorrelationId)) {
-                        log.debug("AsyncQueueConsumerService::consume - Skipping message with different correlationId: {} (expected: {})",
+                        log.info("AsyncQueueConsumerService::consume - Skipping message with different correlationId: {} (expected: {})",
                                 messageCorrelationId,
                                 correlationId
                         );
                         continue;
                     }
 
-                    log.debug("AsyncQueueConsumerService::consume - Processing message for correlationId: {} with message.Id={} and message.correlationId:{}",
+                    log.info("AsyncQueueConsumerService::consume - Processing message for correlationId: {} with message.Id={} and message.correlationId:{}",
                             correlationId,
                             m.messageId(),
                             messageCorrelationId
@@ -83,7 +89,7 @@ public class AsyncQueueConsumerService implements AsyncQueueCall<List<ProductRes
                         continue;
                     }
 
-                    log.debug("AsyncQueueConsumerService::consume - Response received - correlationId: {}, messageId={}, correlationId={}, body.size={}",
+                    log.info("AsyncQueueConsumerService::consume - Response received - correlationId: {}, messageId={}, correlationId={}, body.size={}",
                             correlationId,
                             m.messageId(),
                             messageCorrelationId,

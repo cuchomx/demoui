@@ -1,11 +1,10 @@
-package com.example.demo.biz.products.findAll.controllers.v3;
+package com.example.demo.biz.products.findAll.controllers.v4;
 
-import com.example.commons.dto.create.ProductResponseDto;
 import com.example.commons.dto.find.ProductFindAllRequestDto;
 import com.example.commons.utils.ParameterValidationUtils;
 import com.example.demo.biz.commons.cache.IdempotentRequestCache;
-import com.example.demo.biz.products.findAll.queues.consumer.shared.CallableFutureCacheService;
-import com.example.demo.biz.products.findAll.queues.consumer.v3.service.IProductFindAllV3QueueConsumer;
+import com.example.demo.biz.commons.dto.IdResponse;
+import com.example.demo.biz.products.findAll.queues.consumer.v4.service.IProductFindAllV4QueueService;
 import com.example.demo.biz.products.findAll.queues.producer.IProductFindAllQueueProducer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,26 +16,20 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.time.Duration;
-import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-
 @Slf4j
 @RequiredArgsConstructor
 @RestController
-@RequestMapping("/api/v3/products")
-public class ProductFindAllFutureRestController {
-
-    private final IProductFindAllQueueProducer productFindAllQueueProducer;
-
-    private final IProductFindAllV3QueueConsumer productFindAllV3QueueConsumer;
+@RequestMapping("/api/v4/products")
+public class ProductFindAllV4Controller {
 
     private static final int DEFAULT_LIMIT = 10;
     private static final int DEFAULT_OFFSET = 0;
     private static final int MIN_LIMIT = 1;
     private static final int MIN_OFFSET = 0;
-    private static final Duration RESPONSE_TIMEOUT = Duration.ofSeconds(12);
+
+    private final IProductFindAllQueueProducer productFindAllQueueProducer;
+    private final IProductFindAllV4QueueService iProductFindAllV4QueueService;
+
 
     @GetMapping
     public HttpEntity<?> findAll(
@@ -64,35 +57,23 @@ public class ProductFindAllFutureRestController {
 
         ProductFindAllRequestDto requestDto = buildRequestDto(correlationId, safeLimit, safeOffset);
         try {
+
             log.info("ProductFindAllFutureRestController::findAll - Producing for correlationId: {}", correlationId);
             productFindAllQueueProducer.produce(correlationId, requestDto);
+
             log.info("ProductFindAllFutureRestController::findAll - Consuming for correlationId: {}", correlationId);
-            productFindAllV3QueueConsumer.consume(correlationId);
+            iProductFindAllV4QueueService.consume(correlationId);
+
+
         } catch (Exception e) {
             log.error("ProductFindAllFutureRestController::findAll - Error producing/consuming for {}", correlationId, e);
             IdempotentRequestCache.INSTANCE.remove(correlationId);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to enqueue request");
         }
 
-        log.info("ProductFindAllFutureRestController::findAll - Waiting for response for correlationId: {}", correlationId);
-        IdempotentRequestCache.INSTANCE.putIfAbsent(correlationId, IdempotentRequestCache.Status.PROCESSING);
-
-        try {
-            CompletableFuture<List<ProductResponseDto>> responseFuture = CallableFutureCacheService.INSTANCE.createIfAbsent(correlationId);
-            List<ProductResponseDto> response = responseFuture
-                    .orTimeout(RESPONSE_TIMEOUT.toSeconds(), TimeUnit.SECONDS)
-                    .join();
-            log.info("ProductFindAllFutureRestController::findAll - Response UUID: {} - response.size={}", correlationId, response.size());
-            IdempotentRequestCache.INSTANCE.remove(correlationId);
-            return ResponseEntity.ok(response);
-        } catch (Exception ex) {
-            log.error("ProductFindAllFutureRestController::findAll - Timeout/exception for {}", correlationId, ex);
-            IdempotentRequestCache.INSTANCE.remove(correlationId);
-            return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body("Timed out waiting for response");
-        } finally {
-            log.info("ProductFindAllFutureRestController::findAll - Removing from cache for correlationId: {}", correlationId);
-            CallableFutureCacheService.INSTANCE.remove(correlationId);
-        }
+        log.info("ProductFindAllFutureRestController::findAll - Response UUID: {} - limit={}", correlationId, safeLimit);
+        IdempotentRequestCache.INSTANCE.remove(correlationId);
+        return ResponseEntity.ok(new IdResponse(correlationId));
     }
 
     private int normalizeLimit(Integer limit) {

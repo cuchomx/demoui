@@ -1,8 +1,9 @@
-package com.example.demo.biz.products.findAll.queues.consumer.v3;
+package com.example.demo.biz.products.findAll.queues.consumer.v3.service;
 
 import com.example.commons.dto.create.ProductResponseDto;
 import com.example.commons.utils.ParameterValidationUtils;
-import com.example.demo.biz.products.findAll.controllers.v3.ThreadMapCacheService;
+import com.example.demo.biz.products.findAll.queues.consumer.shared.CallableFutureCacheService;
+import com.example.demo.biz.products.findAll.queues.consumer.v3.consumer.AsyncQueueConsumerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -43,7 +44,7 @@ public class ProductFindAllV3QueueConsumer implements IProductFindAllV3QueueCons
 
         try {
             // Ensure a waiting future exists for the correlationId
-            ThreadMapCacheService.createIfAbsent(correlationId);
+            CallableFutureCacheService.INSTANCE.createIfAbsent(correlationId);
 
             CompletableFuture<List<ProductResponseDto>> pipeline =
                     CompletableFuture
@@ -53,14 +54,14 @@ public class ProductFindAllV3QueueConsumer implements IProductFindAllV3QueueCons
                             .whenComplete((products, throwable) -> {
                                 if (throwable != null) {
                                     log.error("ProductFindAllV3QueueConsumer::consume - Failed for correlationId={}: {}", correlationId, throwable.getMessage(), throwable);
-                                    ThreadMapCacheService.completeExceptionally(correlationId, throwable);
+                                    CallableFutureCacheService.INSTANCE.completeExceptionally(correlationId, throwable);
                                 } else {
                                     int size = products != null ? products.size() : 0;
                                     log.info("ProductFindAllV3QueueConsumer::consume - Processed {} products for correlationId={}", size, correlationId);
                                     if (products != null && !products.isEmpty()) {
                                         products.stream().limit(5).forEach(p -> log.debug("ProductFindAllV3QueueConsumer::consume - product: {}", p));
                                     }
-                                    ThreadMapCacheService.complete(correlationId, products != null ? products : List.of());
+                                    CallableFutureCacheService.INSTANCE.complete(correlationId, products != null ? products : List.of());
                                 }
                             });
 
@@ -76,7 +77,7 @@ public class ProductFindAllV3QueueConsumer implements IProductFindAllV3QueueCons
 
         } catch (Exception e) {
             log.error("ProductFindAllV3QueueConsumer::consume - Unexpected exception for correlationId={}: {}", correlationId, e.getMessage(), e);
-            ThreadMapCacheService.completeExceptionally(correlationId, e);
+            CallableFutureCacheService.INSTANCE.completeExceptionally(correlationId, e);
             return List.of();
         }
     }

@@ -1,10 +1,10 @@
-package com.example.demo.biz.products.findAll.queues.consumer.v3;
+package com.example.demo.biz.products.findAll.queues.consumer.v4.service;
 
 import com.example.commons.dto.create.ProductResponseDto;
 
 import java.util.List;
 
-public interface IProductFindAllV3QueueConsumer {
+public interface IProductFindAllV4QueueService {
 
     List<ProductResponseDto> consume(String correlationId);
 
