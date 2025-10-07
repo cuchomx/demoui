@@ -23,7 +23,7 @@ public class ProductFindAllSyncQueueService implements IProductFindAllSyncQueueS
     private final ExecutorService virtualExecutor =
             Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("find-all-v5-", 0).factory());
 
-    @Value("${products.findAll.v5.timeout.seconds:10}")
+    @Value("${products.findAll.v5.timeout.seconds:20}")
     private int timeoutSeconds;
 
     @Override
@@ -32,21 +32,19 @@ public class ProductFindAllSyncQueueService implements IProductFindAllSyncQueueS
 
         var futureResponse = CompletableFuture
                 .supplyAsync(() -> new SyncQueueConsumer().consume(correlationId), virtualExecutor)
-                .thenCompose(f -> f)
-                .orTimeout(timeoutSeconds, TimeUnit.SECONDS)
+                .thenApply(CompletableFuture::join)
                 .exceptionally(e -> {
-                    log.error("ProductFindAllSyncQueueService::consume - Timeout or error waiting for response for correlationId={}", correlationId, e);
+                    log.error("ProductFindAllSyncQueueService::consume - Error consuming for correlationId={}", correlationId, e);
                     return List.of();
                 })
-                .thenApply(this::ensureProductsOrEmpty);
+                .completeOnTimeout(List.of(), timeoutSeconds, TimeUnit.SECONDS);
+
+        log.info("ProductFindAllSyncQueueService::consume - Get ! - collecting products for correlationId: {}", correlationId);
 
         try {
             var products = futureResponse.get();
-            if (products.isEmpty()) {
-                log.warn("ProductFindAllSyncQueueService::consume - No products yet for correlationId={}", correlationId);
-                return List.of();
-            }
             log.info("ProductFindAllSyncQueueService::consume - Returning {} products for correlationId={}", products.size(), correlationId);
+            logEachProduct(products);
             return products;
         } catch (Exception e) {
             log.error("ProductFindAllSyncQueueService::consume - Unexpected error for correlationId={}", correlationId, e);
@@ -54,18 +52,12 @@ public class ProductFindAllSyncQueueService implements IProductFindAllSyncQueueS
         }
     }
 
-    private List<ProductResponseDto> ensureProductsOrEmpty(List<ProductResponseDto> products) {
-        if (products == null || products.isEmpty()) {
-            return List.of();
-        }
-        logEachProduct(products);
-        return products;
-    }
-
     private void logEachProduct(List<ProductResponseDto> products) {
+        log.info("ProductFindAllSyncQueueService::logEachProduct - logging each product, total: {}", products.size());
         products.stream()
                 .filter(Objects::nonNull)
-                .forEach(product -> log.info("ProductFindAllSyncQueueService::consume - product: {}", product));
+                .forEach(product -> log.info("product: {}", product));
+        log.info("___________________________________________________________________________________________");
     }
 
     @PreDestroy

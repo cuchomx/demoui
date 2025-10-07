@@ -35,9 +35,9 @@
         }
 
         $.ajax({
-            url: '/api/v5/products?uuid=' + encodeURIComponent(requestUuid) + '&limit=10&offset=0',
+            url: '/api/v5/products/map?uuid=' + encodeURIComponent(requestUuid) + '&limit=10&offset=0',
             method: 'GET',
-            timeout: 10000,
+            timeout: 1000000,
             success: function (data) {
                 console.log('Products fetched:', data);
                 const products = Array.isArray(data)

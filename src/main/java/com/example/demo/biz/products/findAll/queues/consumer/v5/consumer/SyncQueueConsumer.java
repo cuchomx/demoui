@@ -4,6 +4,7 @@ import com.example.commons.dto.create.ProductResponseDto;
 import com.example.commons.utils.QueueAttributeUtils;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.extern.slf4j.Slf4j;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
@@ -19,17 +20,21 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ThreadLocalRandom;
 
 import static java.util.stream.Collectors.toList;
 
 @Slf4j
 public class SyncQueueConsumer implements ISyncQueueConsumer<List<ProductResponseDto>> {
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+
     private final SqsClient sqsClient;
 
-    private static final String QUEUE_URL = "https://localhost.localstack.cloud:4566/000000000000/product-find-web";
-    private static final String LOCALSTACK_ENDPOINT = "http://localhost:4566";
+    private static final String QUEUE_URL = "http://localhost:9324/000000000000/product-find-web";
+    private static final String LOCALSTACK_ENDPOINT = "http://localhost:9324";
 
     public SyncQueueConsumer() {
         this.sqsClient = SqsClient.builder()
@@ -71,11 +76,12 @@ public class SyncQueueConsumer implements ISyncQueueConsumer<List<ProductRespons
                     correlationId
             );
 
-            log.info("SyncQueueConsumer::consume - Polling products for correlationId={}", correlationId);
+            log.info("SyncQueueConsumer::consume - Polling products for expected correlationId={}", correlationId);
             productList = getProductList(messages, correlationId);
+            log.info("SyncQueueConsumer::consume - Polling products completed for correlationId={}, products:{}", correlationId, productList);
 
             if (productList != null) {
-                log.info("SyncQueueConsumer::consume - Polling completed - {} products for correlationId={}", productList.size(), correlationId);
+                log.info("SyncQueueConsumer::consume - Polling completed - break! - {} products for correlationId={}", productList.size(), correlationId);
                 break;
             }
 
@@ -94,52 +100,52 @@ public class SyncQueueConsumer implements ISyncQueueConsumer<List<ProductRespons
         List<Message> toDelete = new ArrayList<>();
         List<Message> toRelease = new ArrayList<>();
 
-        for (Message m : messages) {
-            try {
-                String messageCorrelationId = QueueAttributeUtils.extractCorrelationId(m);
+        try {
 
-                if (StringUtils.isBlank(messageCorrelationId)) {
-                    log.warn("SyncQueueConsumer::getProductList - Missing CORRELATION_ID for messageId={}", m.messageId());
-                    continue;
-                }
+            for (Message m : messages) {
+                try {
+                    String messageCorrelationId = QueueAttributeUtils.extractCorrelationId(m);
 
-                if (!correlationId.equals(messageCorrelationId)) {
-                    toRelease.add(m);
-                    continue;
-                }
+                    if (StringUtils.isBlank(messageCorrelationId)) {
+                        log.warn("SyncQueueConsumer::getProductList - Missing CORRELATION_ID for messageId={}", m.messageId());
+                        continue;
+                    }
 
-                if (StringUtils.isBlank(m.body())) {
-                    log.warn("SyncQueueConsumer::getProductList - Missing BODY for correlationId={}, messageId={}", correlationId, m.messageId());
+                    if (!correlationId.equals(messageCorrelationId)) {
+                        log.warn("SyncQueueConsumer::getProductList - Skipping message with different correlationId: {} (expected: {})", messageCorrelationId, correlationId);
+                        toRelease.add(m);
+                        continue;
+                    }
+
+                    if (StringUtils.isBlank(m.body())) {
+                        log.warn("SyncQueueConsumer::getProductList - Missing BODY for correlationId={}, messageId={}", correlationId, m.messageId());
+                        toDelete.add(m);
+                        continue;
+                    }
+
+                    var productsOpt = parseProducts(m.body()).orElse(List.of());
+                    if (productsOpt.isEmpty()) {
+                        log.warn("SyncQueueConsumer::getProductList - Unparseable body for messageId={}, leaving for retry/DLQ", m.messageId());
+                        continue;
+                    }
+
+                    log.info("SyncQueueConsumer::getProductList - Received {} products for correlationId={}", productsOpt.size(), correlationId);
+                    List<ProductResponseDto> productList = new ArrayList<>(productsOpt);
+                    log.info("SyncQueueConsumer::getProductList - Returning {} products for correlationId={}", productList.size(), correlationId);
+
                     toDelete.add(m);
-                    continue;
+
+                    return productList;
+                } catch (Exception e) {
+                    log.error("SyncQueueConsumer::getProductList - Failed to process messageId={}: {}", m.messageId(), e.getMessage(), e);
                 }
-
-                var productsOpt = parseProducts(m.body());
-                if (productsOpt.isEmpty()) {
-                    log.warn("SyncQueueConsumer::getProductList - Unparseable body for messageId={}, leaving for retry/DLQ", m.messageId());
-                    continue;
-                }
-
-                QueueAttributeUtils.logMessageSummary(m);
-                toDelete.add(m);
-
-                List<ProductResponseDto> productList = new ArrayList<>(productsOpt.get());
-                log.debug("SyncQueueConsumer::getProductList - Returning {} products for correlationId={}", productList.size(), correlationId);
-
-                // Ensure we perform batched maintenance before returning
-                if (!toDelete.isEmpty()) safeDeleteBatch(toDelete);
-                if (!toRelease.isEmpty()) releaseMessagesBatch(toRelease);
-
-                return productList;
-            } catch (Exception e) {
-                log.error("SyncQueueConsumer::getProductList - Failed to process messageId={}: {}", m.messageId(), e.getMessage(), e);
             }
+        } finally {
+            log.info("SyncQueueConsumer::getProductList - Deleting {} messages for correlationId={}", toDelete.size(), correlationId);
+            if (!toDelete.isEmpty()) safeDeleteBatch(toDelete);
+            log.info("SyncQueueConsumer::getProductList - Releasing {} messages for correlationId={}", toRelease.size(), correlationId);
+            if (!toRelease.isEmpty()) releaseMessagesBatch(toRelease);
         }
-
-        log.info("SyncQueueConsumer::getProductList - {} messages processed for correlationId={}", messages.size(), correlationId);
-
-        if (!toDelete.isEmpty()) safeDeleteBatch(toDelete);
-        if (!toRelease.isEmpty()) releaseMessagesBatch(toRelease);
 
         return null;
     }
@@ -147,9 +153,9 @@ public class SyncQueueConsumer implements ISyncQueueConsumer<List<ProductRespons
     private List<Message> getMessages() {
         var receiveRequest = ReceiveMessageRequest.builder()
                 .queueUrl(QUEUE_URL)
-                .waitTimeSeconds(10)
-                .visibilityTimeout(60)
                 .maxNumberOfMessages(10)
+                .waitTimeSeconds(20)
+                .visibilityTimeout(10)
                 .messageAttributeNames("All")
                 .build();
         try {
@@ -159,7 +165,7 @@ public class SyncQueueConsumer implements ISyncQueueConsumer<List<ProductRespons
                 log.info("SyncQueueConsumer::getMessages - SQS receive has no messages");
                 return List.of();
             }
-            log.info("SyncQueueConsumer::getMessages - SQS receive has messages: {}", response.messages());
+            log.info("SyncQueueConsumer::getMessages - SQS receive has messages: {}", response.messages().size());
             return response.messages();
         } catch (Exception e) {
             log.error("SyncQueueConsumer::getMessages - SQS receive failed: {}", e.getMessage(), e);
@@ -215,8 +221,8 @@ public class SyncQueueConsumer implements ISyncQueueConsumer<List<ProductRespons
     private static void sleepQuietly(long retry) {
         try {
             if (retry > 0) {
-                long base = 10L * retry;
-                long jitter = (long) (Math.random() * 5L);
+                long base = 3_000L * retry;
+                long jitter = ThreadLocalRandom.current().nextInt(100, 501);
                 long time = base + jitter;
                 log.info("SyncQueueConsumer::sleepQuietly - Sleeping for {} milliseconds", time);
                 Thread.sleep(time);

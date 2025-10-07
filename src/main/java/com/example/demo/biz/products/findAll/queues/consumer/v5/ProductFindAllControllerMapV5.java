@@ -17,13 +17,16 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
 @RequiredArgsConstructor
 @RestController
-@RequestMapping("/api/v5/products")
-public class ProductFindAllControllerV5 {
+@RequestMapping("/api/v5/products/map")
+public class ProductFindAllControllerMapV5 {
 
     private static final int DEFAULT_LIMIT = 10;
     private static final int DEFAULT_OFFSET = 0;
@@ -33,6 +36,9 @@ public class ProductFindAllControllerV5 {
     private final IProductFindAllQueueProducer productFindAllQueueProducer;
 
     private final IProductFindAllSyncQueueService iProductFindAllSyncQueueService;
+
+    private final Map<String, Object> locks = new ConcurrentHashMap<>();
+    private final Map<String, Boolean> completedStates = new ConcurrentHashMap<>();
 
     private final Object lock = new Object();
     private volatile boolean completed = true;
@@ -65,9 +71,9 @@ public class ProductFindAllControllerV5 {
 
             // consume
             log.info("ProductFindAllControllerV5::findAll - Consuming for correlationId: {}", correlationId);
-            List<ProductResponseDto> products = iProductFindAllSyncQueueService.consume(correlationId);
+//            List<ProductResponseDto> products = iProductFindAllSyncQueueService.consume(correlationId);
 
-//            List<ProductResponseDto> products = fetchProducts(correlationId);
+            List<ProductResponseDto> products = fetchProductsAsync(correlationId);
 
             IdempotentRequestCache.INSTANCE.putIfAbsent(correlationId, IdempotentRequestCache.Status.COMPLETED);
 
@@ -92,14 +98,14 @@ public class ProductFindAllControllerV5 {
         }
     }
 
-    private List<ProductResponseDto> fetchProducts(String correlationId) {
+    private List<ProductResponseDto> fetchProductsAsync(String correlationId) throws TimeoutException {
         AtomicReference<List<ProductResponseDto>> products = new AtomicReference<>();
         new Thread(() -> {
             try {
                 List<ProductResponseDto> result = iProductFindAllSyncQueueService.consume(correlationId);
                 products.set(result);
             } catch (Exception e) {
-                log.error("ProductFindAllControllerV5::fetchProducts - Error consuming for correlationId: {}", correlationId, e);
+                log.error("ProductFindAllControllerV5::fetchProductsAsync - Error consuming for correlationId: {}", correlationId, e);
             } finally {
                 unlock(correlationId);
             }
@@ -110,31 +116,35 @@ public class ProductFindAllControllerV5 {
 
     private void unlock(String correlationId) {
         log.info("ProductFindAllControllerV5::unlock - correlationId: {}, Unlocking for thread: {}", correlationId, Thread.currentThread());
+        Object lock = locks.computeIfAbsent(correlationId, k -> new Object());
         synchronized (lock) {
-            completed = true;
+            completedStates.put(correlationId, true);
             lock.notifyAll();
         }
     }
 
-    private void lock(String correlationId) {
+    private void lock(String correlationId) throws TimeoutException {
         log.info("ProductFindAllControllerV5::lock - correlationId: {}, Locking for thread: {}", correlationId, Thread.currentThread());
-        completed = false;
+
+        Object lock = locks.computeIfAbsent(correlationId, k -> new Object());
+        completedStates.put(correlationId, false);
+
         synchronized (lock) {
-            try {
-                long timeoutMillis = 30_000;
-                while (!completed) {
-                    log.info("ProductFindAllControllerV5::lock - Waiting for response - correlationId: {}", correlationId);
-                    try {
-                        lock.wait(timeoutMillis);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        log.error("ProductFindAllControllerV5::lock - Thread Interrupted while waiting for correlationId: {}", correlationId, e);
-                        throw new RuntimeException("Interrupted while waiting for lock", e);
+            long timeoutMillis = 30_000;
+            long startTime = System.currentTimeMillis();
+            while (!completedStates.getOrDefault(correlationId, false)) {
+                log.info("ProductFindAllControllerV5::lock - Waiting for response - correlationId: {}", correlationId);
+                try {
+                    lock.wait(timeoutMillis);
+                    if (!completedStates.getOrDefault(correlationId, false) && (System.currentTimeMillis() - startTime) >= timeoutMillis) {
+                        log.error("ProductFindAllControllerV5::lock - Timeout waiting for response for correlationId: {}", correlationId);
+                        throw new TimeoutException("Lock wait timed out for correlationId: " + correlationId);
                     }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    log.error("ProductFindAllControllerV5::lock - Thread Interrupted while waiting for correlationId: {}", correlationId, e);
+                    throw new RuntimeException("Interrupted while waiting for lock", e);
                 }
-            } catch (RuntimeException e) {
-                log.error("ProductFindAllControllerV5::lock - Error waiting for response for correlationId: {}", correlationId, e);
-                throw e;
             }
         }
     }
