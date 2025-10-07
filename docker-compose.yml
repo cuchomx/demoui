@@ -1,0 +1,14 @@
+services:
+  localstack:
+    image: localstack/localstack:latest
+    ports:
+      - "4566:4566"
+      - "8989:8080"  # LocalStack Web GUI
+    environment:
+      - SERVICES=lambda,sqs
+      - DEBUG=1
+      - DOCKER_HOST=unix://$HOME/.local/share/containers/podman/machine/podman.sock
+      - LOCALSTACK_WEB_UI=1  # Enable LocalStack Web GUI
+    volumes:
+      #      - "$HOME/.local/share/containers/podman/podman-machine/podman.sock:/var/run/docker.sock"
+      - ./localstack-logs:/var/log/localstack  # Persist LocalStack logs

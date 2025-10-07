@@ -1,4 +1,4 @@
-package com.example.demo.biz.products.findAll.controllers.v4;
+package com.example.demo.biz.products.findAll.controllers.v4.dep;
 
 import lombok.extern.slf4j.Slf4j;
 

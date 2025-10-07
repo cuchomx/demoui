@@ -48,8 +48,8 @@ public enum IdempotentRequestCache {
 
     public boolean isInProgress(String key) {
         validateKey(key);
-        var request = cache.get(key);
-        boolean inProgress = request == Status.RECEIVED || request == Status.PROCESSING;
+        var value = cache.get(key);
+        boolean inProgress = value == Status.RECEIVED || value == Status.PROCESSING;
         log.debug("Key {} is in progress: {}", key, inProgress);
         return inProgress;
     }

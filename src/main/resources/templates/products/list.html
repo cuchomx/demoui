@@ -8,6 +8,7 @@
 <body>
 <h1>Products</h1>
 <p><a href="/products/new">Create a new product</a></p>
+<p id="statusLine" aria-live="polite"></p>
 <table border="1" cellpadding="6" cellspacing="0">
     <thead>
     <tr>
@@ -24,7 +25,7 @@
 <script>
     const requestUuid = crypto.randomUUID();
 
-    function fetchProducts(retries = 3, delay = 2000) {
+    function fetchProducts(retries = 1, delay = 2000) {
         console.log('Fetching products (retry #' + retries + ')');
 
         if (retries <= 0) {
@@ -34,20 +35,20 @@
         }
 
         $.ajax({
-//            url: '/api/products/sync?uuid=' + encodeURIComponent(requestUuid) + '&limit=10&offset=0',
-            url: '/api/v4/products?uuid=' + encodeURIComponent(requestUuid) + '&limit=10&offset=0',
+            url: '/api/v5/products?uuid=' + encodeURIComponent(requestUuid) + '&limit=10&offset=0',
             method: 'GET',
+            timeout: 10000,
             success: function (data) {
                 console.log('Products fetched:', data);
                 const products = Array.isArray(data)
                     ? data
-                    : Array.isArray(data?.products) ? data.products : null;
+                    : (data && Array.isArray(data.products)) ? data.products : null;
 
                 if (products && products.length > 0) {
                     updateTable(products);
                     showStatus('');
                 } else {
-                    const msg = typeof data === 'string'
+                    const msg = (typeof data === 'string')
                         ? data
                         : (data && data.status) ? data.status : 'IN PROGRESS';
                     showStatus('Loading... ' + msg);
@@ -56,6 +57,7 @@
             },
             error: function (xhr, status, error) {
                 console.error('Failed to fetch products:', error);
+                showStatus('Loading... RETRYING');
                 setTimeout(() => fetchProducts(retries - 1, delay), delay);
             }
         });
@@ -79,13 +81,8 @@
     }
 
     function showStatus(text) {
-        let el = document.getElementById('statusLine');
-        if (!el) {
-            el = document.createElement('p');
-            el.id = 'statusLine';
-            document.body.insertBefore(el, document.querySelector('table'));
-        }
-        el.textContent = text || '';
+        const el = document.getElementById('statusLine');
+        if (el) el.textContent = text || '';
     }
 
     $(document).ready(function () {

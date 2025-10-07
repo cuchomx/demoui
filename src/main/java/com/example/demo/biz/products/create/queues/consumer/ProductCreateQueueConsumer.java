@@ -51,8 +51,8 @@ public class ProductCreateQueueConsumer implements IProductCreateQueueConsumer {
     @Scheduled(fixedDelayString = "${sqs.poll.fixedDelay.ms:1000}")
     @Override
     public void consume() {
-        log.debug("=================================================================================================");
-        log.debug("ProductCreateQueueConsumer::consume - Polling SQS queue {}", queueUrl);
+        log.trace("=================================================================================================");
+        log.trace("ProductCreateQueueConsumer::consume - Polling SQS queue {}", queueUrl);
 
         ReceiveMessageRequest receiveRequest = buildReceiveRequest();
         List<Message> messages = sqsClient.receiveMessage(receiveRequest).messages();

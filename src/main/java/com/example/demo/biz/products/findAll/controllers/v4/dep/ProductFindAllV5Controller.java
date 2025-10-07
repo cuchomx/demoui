@@ -1,4 +1,4 @@
-package com.example.demo.biz.products.findAll.controllers.v4;
+package com.example.demo.biz.products.findAll.controllers.v4.dep;
 
 import com.example.commons.dto.find.ProductFindAllRequestDto;
 import com.example.commons.utils.ParameterValidationUtils;
@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Slf4j
 @RequiredArgsConstructor
 @RestController
-@RequestMapping("/api/v5/products")
+@RequestMapping("/api/v55/products")
 public class ProductFindAllV5Controller {
 
     private static final int DEFAULT_LIMIT = 10;

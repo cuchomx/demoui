@@ -21,13 +21,11 @@ import java.util.List;
 @Slf4j
 @RequiredArgsConstructor
 @RestController
-@RequestMapping("/api/v6/products")
+@RequestMapping("/api/v4/products")
 public class RHV4ProductFindAllController {
 
     private static final int DEFAULT_LIMIT = 10;
     private static final int DEFAULT_OFFSET = 0;
-    private static final int MIN_LIMIT = 1;
-    private static final int MIN_OFFSET = 0;
 
     private final IProductFindAllQueueProducer productFindAllQueueProducer;
     private final IProductFindAllV4QueueService iProductFindAllV4QueueService;
