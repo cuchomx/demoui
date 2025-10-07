@@ -40,9 +40,6 @@ public class ProductFindAllControllerMapV5 {
     private final Map<String, Object> locks = new ConcurrentHashMap<>();
     private final Map<String, Boolean> completedStates = new ConcurrentHashMap<>();
 
-    private final Object lock = new Object();
-    private volatile boolean completed = true;
-
     @GetMapping
     public HttpEntity<List<ProductResponseDto>> findAllRequestThread(
             @RequestParam("uuid") String correlationId,
