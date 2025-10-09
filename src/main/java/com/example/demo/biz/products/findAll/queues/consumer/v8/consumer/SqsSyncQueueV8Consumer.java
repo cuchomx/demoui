@@ -147,8 +147,7 @@ public class SqsSyncQueueV8Consumer implements AutoCloseable {
                 safeDeleteBatch(toDelete);
             }
             if (!toRelease.isEmpty()) {
-                log.debug("getProductList - Releasing {} messages for correlationId={}",
-                        toRelease.size(), correlationId);
+                log.debug("getProductList - Releasing {} messages for correlationId={}", toRelease.size(), correlationId);
                 releaseMessagesBatch(toRelease);
             }
         }
@@ -266,7 +265,7 @@ public class SqsSyncQueueV8Consumer implements AutoCloseable {
     }
 
     private void sleepWithBackoff(int attemptNumber) {
-        final long BASE_BACKOFF_MS = 2_000L;
+        final long BASE_BACKOFF_MS = 1_000L;
         final int MIN_JITTER_MS = 100;
         final int MAX_JITTER_MS = 301;
 

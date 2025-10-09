@@ -55,22 +55,17 @@ public class ProductFindAllSqsV8RestController {
             log.info("findAll - Locking for correlationId: {}", correlationId);
             LockingV8CacheService.INSTANCE.lock(correlationId);
 
+            // unlocked !!!
             IdempotentRequestCache.INSTANCE.putIfAbsent(correlationId, IdempotentRequestCache.Status.COMPLETED);
 
             // get products
             log.info("findAll - Getting products for correlationId: {}", correlationId);
             List<ProductResponseDto> products = LockingV8CacheService.INSTANCE.getProducts(correlationId);
-
             if (products == null) {
                 log.warn("findAll - No products found for correlationId: {} returning accepted", correlationId);
                 return ResponseEntity.status(HttpStatus.NO_CONTENT).body(List.of());
             }
-
-            log.info("findAll - Received {} products for correlationId: {}",
-                    products.size(),
-                    correlationId
-            );
-
+            
             log.info("findAll - Returning {} products for correlationId: {}", products.size(), correlationId);
             return ResponseEntity.ok(products);
         } catch (Exception e) {
