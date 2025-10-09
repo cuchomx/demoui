@@ -14,20 +14,21 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 public class ProductFindAllSqsV8QueueService {
 
+    final ExecutorService virtualExecutor =
+            Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("find-all-consumer-v8-", 0).factory());
 
     public CompletableFuture<LockingV8CacheService.LockStateVariables> consume(String correlationId) {
 
         log.info("queue::consume - building completable future - consuming products");
 
-        final ExecutorService virtualExecutor =
-                Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("find-all-consumer-v8-", 0).factory());
 
         return CompletableFuture
                 .supplyAsync(() -> {
                     try (var sqsConsumer = new SqsSyncQueueV8Consumer()) {
                         return sqsConsumer.consume(correlationId);
-                    } finally {
-                        shutdownExecutor(virtualExecutor);
+                    } catch (Exception e) {
+                        log.error("queue::consume - Error consuming, returning null list for completable future", e);
+                        return null;
                     }
                 }, virtualExecutor)
                 .thenCompose(future -> future)
@@ -55,7 +56,7 @@ public class ProductFindAllSqsV8QueueService {
                         LockingV8CacheService.INSTANCE.fail(correlationId, message);
                     }
                 })
-                .orTimeout(20, TimeUnit.SECONDS)
+                .orTimeout(10, TimeUnit.SECONDS)
                 .exceptionally(e -> {
                     log.error("queue::consume - Error consuming, returning null list for completable future", e);
                     return null;
@@ -65,10 +66,10 @@ public class ProductFindAllSqsV8QueueService {
     void shutdownExecutor(ExecutorService virtualExecutor) {
         try {
             virtualExecutor.shutdown();
-            if (!virtualExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                virtualExecutor.shutdownNow();
-            }
-        } catch (InterruptedException ie) {
+//            if (!virtualExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+//                virtualExecutor.shutdownNow();
+//            }
+        } catch (Exception ie) {
             Thread.currentThread().interrupt();
             virtualExecutor.shutdownNow();
         }

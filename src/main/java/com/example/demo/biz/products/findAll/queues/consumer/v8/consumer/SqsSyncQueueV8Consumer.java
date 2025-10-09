@@ -63,7 +63,7 @@ public class SqsSyncQueueV8Consumer implements AutoCloseable {
 
         do {
 
-            log.debug("consume - Polling attempt {}/{} for correlationId={}", currentAttempt, MAX_ATTEMPTS, correlationId);
+            log.info("consume - Polling attempt {}/{} for correlationId={}", currentAttempt, MAX_ATTEMPTS, correlationId);
 
             List<Message> messages = getMessages();
             if (!messages.isEmpty()) {
@@ -161,6 +161,13 @@ public class SqsSyncQueueV8Consumer implements AutoCloseable {
         final int WAIT_TIME_SECONDS = 20;
         final int VISIBILITY_TIMEOUT_SECONDS = 30;
 
+        log.debug("getMessages - Getting messages from queue {}, messages.per-poll={}, wait-time={}, visibility-timeout={}",
+                queueUrl,
+                MAX_MESSAGES_PER_POLL,
+                WAIT_TIME_SECONDS,
+                VISIBILITY_TIMEOUT_SECONDS
+        );
+
         ReceiveMessageRequest receiveRequest = ReceiveMessageRequest.builder()
                 .queueUrl(queueUrl)
                 .maxNumberOfMessages(MAX_MESSAGES_PER_POLL)
@@ -170,7 +177,7 @@ public class SqsSyncQueueV8Consumer implements AutoCloseable {
                 .build();
 
         try {
-            log.debug("getMessages - Polling SQS queue {}", queueUrl);
+            log.debug("getMessages - Polling queue .... {}", queueUrl);
             ReceiveMessageResponse response = sqsClient.receiveMessage(receiveRequest);
 
             if (!response.hasMessages()) {
