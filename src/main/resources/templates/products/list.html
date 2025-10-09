@@ -35,7 +35,7 @@
         }
 
         $.ajax({
-            url: '/api/v5/products/map?uuid=' + encodeURIComponent(requestUuid) + '&limit=10&offset=0',
+            url: '/api/v7/products?uuid=' + encodeURIComponent(requestUuid) + '&limit=10&offset=0',
             method: 'GET',
             timeout: 1000000,
             success: function (data) {

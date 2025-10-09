@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicReference;
 @Slf4j
 @RequiredArgsConstructor
 @RestController
-@RequestMapping("/api/v6/products")
+@RequestMapping("/api/v4.1/products")
 public class ProductFindAllV6Controller {
 
     private static final int DEFAULT_LIMIT = 10;

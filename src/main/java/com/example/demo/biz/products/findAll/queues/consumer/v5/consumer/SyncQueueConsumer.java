@@ -25,7 +25,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import static java.util.stream.Collectors.toList;
 
 @Slf4j
-public class SyncQueueConsumer implements ISyncQueueConsumer<List<ProductResponseDto>> {
+public class SyncQueueConsumer implements ISyncQueueConsumer<List<ProductResponseDto>>, AutoCloseable {
 
     private final ObjectMapper objectMapper = new ObjectMapper()
             .registerModule(new JavaTimeModule())
@@ -232,5 +232,9 @@ public class SyncQueueConsumer implements ISyncQueueConsumer<List<ProductRespons
         }
     }
 
+    @Override
+    public void close() throws Exception {
+
+    }
 }
 
