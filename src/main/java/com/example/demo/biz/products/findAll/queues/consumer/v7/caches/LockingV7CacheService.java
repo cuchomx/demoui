@@ -4,11 +4,8 @@ import com.example.commons.dto.create.ProductResponseDto;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeoutException;
 
@@ -18,11 +15,6 @@ public enum LockingV7CacheService {
     INSTANCE;
 
     private final Map<String, LockState> lockStates = new ConcurrentHashMap<>();
-
-    private final Set<String> correlations = new HashSet<>();
-
-    public void addCompletableFuture(CompletableFuture<List<ProductResponseDto>> futureResponse) {
-    }
 
 
     @Data
@@ -87,7 +79,6 @@ public enum LockingV7CacheService {
             lockState.completed = true;
             lockState.lock.notifyAll();
             log.debug("LockCacheService::unlock - Notified all waiting threads for correlationId: {}", correlationId);
-            updateCorrelationList(correlationId);
         }
     }
 
@@ -138,21 +129,15 @@ public enum LockingV7CacheService {
             lockState.completed = true;
             lockState.lock.notifyAll();
         }
-        updateCorrelationList(correlationId);
     }
 
     public void remove(String correlationId) {
         log.info("LockCacheService::remove - correlationId: {}, Removing from cache for thread: {}", correlationId, Thread.currentThread().getName());
         lockStates.remove(correlationId);
-        updateCorrelationList(correlationId);
     }
 
     public boolean hasCorrelationId(String correlationId) {
         return lockStates.containsKey(correlationId);
-    }
-
-    public void updateCorrelationList(String correlation) {
-        correlations.remove(correlation);
     }
 
 }

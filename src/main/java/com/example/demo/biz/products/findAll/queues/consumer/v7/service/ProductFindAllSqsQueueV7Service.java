@@ -7,7 +7,6 @@ import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -29,7 +28,7 @@ public class ProductFindAllSqsQueueV7Service {
     @Value("${products.findAll.v5.timeout.seconds:20}")
     private int timeoutSeconds;
 
-    @Scheduled(fixedRate = 1_000)
+    //    @Scheduled(fixedRate = 1_000)
     public void consume() {
         log.debug("queue::consume - Polling SQS queue");
 
@@ -40,7 +39,6 @@ public class ProductFindAllSqsQueueV7Service {
                     }
                 }, virtualExecutor)
                 .thenCompose(future -> future)
-                //.thenApply(CompletableFuture::join)
                 .whenComplete((operationResults, throwable) -> {
                     if (throwable != null) {
                         log.error("queue::consume - Timeout or error consuming, returning empty list for products", throwable);
