@@ -21,7 +21,6 @@ public class ProductFindAllSqsV8QueueService {
 
         log.info("queue::consume - building completable future - consuming products");
 
-
         return CompletableFuture
                 .supplyAsync(() -> {
                     try (var sqsConsumer = new SqsSyncQueueV8Consumer()) {
@@ -66,9 +65,6 @@ public class ProductFindAllSqsV8QueueService {
     void shutdownExecutor(ExecutorService virtualExecutor) {
         try {
             virtualExecutor.shutdown();
-//            if (!virtualExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-//                virtualExecutor.shutdownNow();
-//            }
         } catch (Exception ie) {
             Thread.currentThread().interrupt();
             virtualExecutor.shutdownNow();
