@@ -66,6 +66,11 @@ public enum LockingV9CacheService {
         log.info("fail - correlationId: {}, with error: {}, thread: {}", correlationId, errorMessage, Thread.currentThread().getName());
         LockStateVariables lockState = cache.get(correlationId);
 
+        if (lockState == null) {
+            log.warn("fail - No lock found for correlationId: {}", correlationId);
+            return;
+        }
+
         lockState.completed = true;
         lockState.success = false;
         lockState.message = errorMessage;
@@ -101,7 +106,11 @@ public enum LockingV9CacheService {
     }
 
     public static void setProducts(String correlationId, List<ProductResponseDto> list) {
-        log.info("setProducts - correlationId: {}, Setting products for thread: {}", correlationId, Thread.currentThread().getName());
+        log.info("setProducts - correlationId: {}, Setting products {} for thread: {}",
+                correlationId,
+                list == null ? 0 : list.size(),
+                Thread.currentThread().getName()
+        );
         LockStateVariables lockState = LockingV9CacheService.INSTANCE.cache.get(correlationId);
         lockState.setProducts(list);
     }
@@ -112,21 +121,26 @@ public enum LockingV9CacheService {
 
         var lockState = cache.computeIfAbsent(correlationId, k -> new LockStateVariables());
 
-        synchronized (lockState.monitor) {
-//            long timeoutMillis = 5_000;
-//            long startTime = System.currentTimeMillis();
-//            long remainingTime = timeoutMillis;
-//
-//            while (!lockState.completed && remainingTime > 0) {
-//                log.debug("lock - Waiting for response - correlationId: {}, remaining time: {}ms", correlationId, remainingTime);
-            lockState.monitor.wait();
-//                long elapsed = System.currentTimeMillis() - startTime;
-//                remainingTime = timeoutMillis - elapsed;
-//            }
+        int attempt = 1;
+
+        do {
+            log.info("lock - attempt:{}", attempt);
+
+            synchronized (lockState.monitor) {
+                log.debug("lock - Waiting for response - correlationId: {}", correlationId);
+                lockState.monitor.wait(1_500);
+            }
 
             var products = lockState.products;
-            log.info("lock - Returning products {} for correlationId: {}", products == null ? "nul" : products.size(), correlationId);
-        }
+
+            if (products == null) {
+                log.warn("lock - No products found for correlationId: {}, attempt:{}", correlationId, attempt);
+            } else {
+                log.info("lock - Received signal for correlationId: {}, products size : {}", correlationId, products.size());
+                break;
+            }
+
+        } while (attempt++ < 3 && !lockState.completed);
 
         if (!lockState.completed) {
             log.error("lock - Timeout waiting for response for correlationId: {}", correlationId);
@@ -143,21 +157,10 @@ public enum LockingV9CacheService {
 
         var lockState = cache.computeIfAbsent(correlationId, k -> new LockStateVariables());
 
-        if (lockState == null) {
-            log.warn("unlock - No lock found for correlationId: {}. It may have already timed out or been cleaned up.", correlationId);
-            return;
-        }
-
-        if (lockState.completed) {
-            log.warn("unlock - Lock already completed for correlationId: {}", correlationId);
-            return;
-        }
-
-        log.info("unlock - Notifying all waiting threads for correlationId: {}", correlationId);
-
         synchronized (lockState.monitor) {
             lockState.monitor.notifyAll();
             log.info("unlock - Notified all waiting threads for correlationId: {}", correlationId);
         }
+
     }
 }

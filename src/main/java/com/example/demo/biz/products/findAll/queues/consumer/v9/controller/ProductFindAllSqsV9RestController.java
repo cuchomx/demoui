@@ -19,7 +19,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -59,17 +58,10 @@ public class ProductFindAllSqsV9RestController {
             // mark completed only when we have a definitive result
             IdempotentRequestCache.INSTANCE.putIfAbsent(correlationId, IdempotentRequestCache.Status.COMPLETED);
 
-            log.info("findAll - Locking for correlationId: {}", correlationId);
-            LockingV9CacheService.INSTANCE.lock(correlationId);
 
             // get products
             log.info("findAll - Getting products for correlationId: {}", correlationId);
-            CompletableFuture<List<ProductResponseDto>> completableFuture = productFindAllSqsQueueV9Service.waitForResult(correlationId, 10L);
-            if (completableFuture == null) {
-                log.warn("findAll - completable - No products found for correlationId: {} returning no content", correlationId);
-                return ResponseEntity.status(HttpStatus.NO_CONTENT).body(List.of());
-            }
-            List<ProductResponseDto> products = completableFuture.get();
+            List<ProductResponseDto> products = productFindAllSqsQueueV9Service.waitForResult(correlationId, 10L);
             if (products == null) {
                 log.warn("findAll - null products - No products found for correlationId: {} returning no content", correlationId);
                 return ResponseEntity.status(HttpStatus.NO_CONTENT).body(List.of());

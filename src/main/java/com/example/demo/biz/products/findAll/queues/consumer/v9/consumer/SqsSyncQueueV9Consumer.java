@@ -84,8 +84,18 @@ public class SqsSyncQueueV9Consumer implements AutoCloseable {
 
     @PreDestroy
     public void destroy() {
-        close(); // close sqs connection
-        pollingExecutor.shutdown(); // stop Thread
+        running = false;
+        pollingExecutor.shutdown();
+        try {
+            if (!pollingExecutor.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                log.warn("stop - Poller did not terminate in time, forcing shutdownNow");
+                pollingExecutor.shutdownNow();
+            }
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            pollingExecutor.shutdownNow();
+        }
+        close();
         log.info("stop - Poller stopped");
     }
 
@@ -110,10 +120,12 @@ public class SqsSyncQueueV9Consumer implements AutoCloseable {
     private void processMessages(List<Message> messages) {
         List<Message> toDelete = new ArrayList<>();
         List<Message> toRelease = new ArrayList<>();
+
         try {
             for (Message m : messages) {
                 try {
                     if (handleMessage(m)) {
+                        // products are available at cache, and the last step is to delete the message on the queue
                         toDelete.add(m);
                     } else {
                         toRelease.add(m);
@@ -187,6 +199,12 @@ public class SqsSyncQueueV9Consumer implements AutoCloseable {
     }
 
     private List<Message> getMessages() {
+
+        if (!running || Thread.currentThread().isInterrupted()) {
+            log.debug("getMessages - Skipping receive; consumer stopping");
+            return Collections.emptyList();
+        }
+
         log.debug("getMessages - Getting messages from queue {}, perPoll={}, wait={}, visibility={}", queueUrl, MAX_MESSAGES_PER_POLL, WAIT_TIME_SECONDS, VISIBILITY_TIMEOUT_SECONDS);
 
         ReceiveMessageRequest receiveRequest = ReceiveMessageRequest.builder()
@@ -205,6 +223,10 @@ public class SqsSyncQueueV9Consumer implements AutoCloseable {
             log.debug("getMessages - Received {} messages", response.messages().size());
             return response.messages();
         } catch (Exception e) {
+            if (!running) {
+                log.debug("getMessages - Receive aborted during shutdown: {}", e.getMessage());
+                return Collections.emptyList();
+            }
             log.error("getMessages - Failed to receive messages: {}", e.getMessage(), e);
             return Collections.emptyList();
         }

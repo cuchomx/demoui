@@ -21,24 +21,43 @@ public class ProductFindAllSqsQueueV9Service {
     private final ExecutorService virtualExecutor =
             Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("find-all-consumer-v9-", 0).factory());
 
-    public CompletableFuture<List<ProductResponseDto>> waitForResult(String correlationId, Long timeout) {
+    public List<ProductResponseDto> waitForResult(String correlationId, Long timeout) {
+        log.info("waitForResult - correlationId: {}, timeout: {}", correlationId, timeout);
+
         try {
+            LockingV9CacheService.INSTANCE.lock(correlationId);
+
             CompletableFuture<List<ProductResponseDto>> completableFuture = CompletableFuture
-                    .supplyAsync(() -> LockingV9CacheService.INSTANCE.getProducts(correlationId), virtualExecutor);
+                    .supplyAsync(() -> {
+                        log.info("waitForResult - Getting products for correlationId: {}", correlationId);
+                        return LockingV9CacheService.INSTANCE.getProducts(correlationId);
+                    }, virtualExecutor)
+                    .thenApply(products -> {
+                        if (products == null) {
+                            log.warn("waitForResult - No products found for correlationId: {}", correlationId);
+                            return List.of();
+                        }
+                        log.info("waitForResult - Returning {} products for correlationId: {}", products.size(), correlationId);
+                        LockingV9CacheService.INSTANCE.complete(correlationId);
+                        return products;
+                    });
 
-            completableFuture.orTimeout(timeout == null ? 20 : timeout, TimeUnit.SECONDS);
 
-            completableFuture.exceptionally(e -> {
-                log.error("consume - Error consuming, returning empty list for products", e);
-                LockingV9CacheService.INSTANCE.fail(correlationId, e.getMessage());
-                return null;
-            });
+            completableFuture
+                    .orTimeout(timeout == null ? 20 : timeout, TimeUnit.SECONDS)
+                    .exceptionally(e -> {
+                        log.error("waitForResult - Error consuming, returning empty list for products", e);
+                        return null;
+                    });
 
-            return completableFuture;
+            return completableFuture.get();
+
         } catch (Exception e) {
-            log.error("consume - Error consuming, returning empty list for products", e);
-            LockingV9CacheService.INSTANCE.fail(correlationId, e.getMessage());
+            log.error("waitForResult - Error consuming, returning empty list for products", e);
             return null;
+        } finally {
+            log.info("waitForResult - Unlocking for correlationId: {}", correlationId);
+            LockingV9CacheService.INSTANCE.complete(correlationId);
         }
     }
 
