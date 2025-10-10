@@ -18,6 +18,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -54,19 +56,26 @@ public class ProductFindAllSqsV9RestController {
             ProductFindAllRequestDto requestDto = buildRequestDto(correlationId, limit, offset);
             productFindAllQueueProducer.produce(correlationId, requestDto);
 
-            log.info("findAll - Locking for correlationId: {}", correlationId);
-            //??? lock
-
             // mark completed only when we have a definitive result
             IdempotentRequestCache.INSTANCE.putIfAbsent(correlationId, IdempotentRequestCache.Status.COMPLETED);
 
+            log.info("findAll - Locking for correlationId: {}", correlationId);
+            LockingV9CacheService.INSTANCE.lock(correlationId);
+
             // get products
             log.info("findAll - Getting products for correlationId: {}", correlationId);
-            List<ProductResponseDto> products = productFindAllSqsQueueV9Service.waitForResult(correlationId, 10L);
-            if (products == null || products.isEmpty()) {
-                log.warn("findAll - No products found for correlationId: {} returning no content", correlationId);
+            CompletableFuture<List<ProductResponseDto>> completableFuture = productFindAllSqsQueueV9Service.waitForResult(correlationId, 10L);
+            if (completableFuture == null) {
+                log.warn("findAll - completable - No products found for correlationId: {} returning no content", correlationId);
                 return ResponseEntity.status(HttpStatus.NO_CONTENT).body(List.of());
             }
+            List<ProductResponseDto> products = completableFuture.get();
+            if (products == null) {
+                log.warn("findAll - null products - No products found for correlationId: {} returning no content", correlationId);
+                return ResponseEntity.status(HttpStatus.NO_CONTENT).body(List.of());
+            }
+
+            logEachProduct(correlationId, products);
 
             log.info("findAll - Returning {} products for correlationId: {}", products.size(), correlationId);
             return ResponseEntity.ok(products);
@@ -84,6 +93,15 @@ public class ProductFindAllSqsV9RestController {
         int normalizedLimit = (limit == null || limit < 1) ? 10 : limit;
         int normalizedOffset = (offset == null || offset < 0) ? 0 : offset;
         return new ProductFindAllRequestDto(correlationId, normalizedLimit, normalizedOffset);
+    }
+
+    private void logEachProduct(String correlationId, List<ProductResponseDto> products) {
+        log.info("___________________________________________________________________________________________");
+        log.info("logEachProduct - logging - correlationId: {}, products.size(): {}", correlationId, products.size());
+        products.stream()
+                .filter(Objects::nonNull)
+                .forEach(product -> log.info("product: {}", product));
+        log.info("___________________________________________________________________________________________");
     }
 
 }
