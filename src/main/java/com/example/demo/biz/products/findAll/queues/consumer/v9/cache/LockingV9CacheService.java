@@ -143,7 +143,7 @@ public enum LockingV9CacheService {
         } while (attempt++ < 3 && !lockState.completed);
 
         if (!lockState.completed) {
-            log.error("lock - Timeout waiting for response for correlationId: {}", correlationId);
+            log.error("lock - not completed - a timeout waiting problem for correlationId: {}", correlationId);
         }
 
         if (!lockState.success) {
