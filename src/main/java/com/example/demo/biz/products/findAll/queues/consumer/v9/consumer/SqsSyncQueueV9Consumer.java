@@ -43,7 +43,9 @@ public class SqsSyncQueueV9Consumer implements AutoCloseable {
     private final String queueUrl;
 
     private final ExecutorService pollingExecutor =
-            Executors.newSingleThreadExecutor(r -> Thread.ofPlatform().name("find-all-consumer-v9-poller-", 0).daemon(true).unstarted(r));
+            Executors.newSingleThreadExecutor(r -> Thread.ofPlatform().name("find-all-consumer-v9-poller-", 0)
+                    .daemon(true)
+                    .unstarted(r));
 
     private final UnresolvedMessagesStrategy unresolvedMessagesStrategy = UnresolvedMessagesStrategy.ADD_TO_CACHE;
 
@@ -74,8 +76,22 @@ public class SqsSyncQueueV9Consumer implements AutoCloseable {
                 .build();
     }
 
+
     @PostConstruct
     public void init() {
+        try {
+            log.info("init - Validating SQS connectivity for queue {}", queueUrl);
+            GetQueueAttributesRequest req = GetQueueAttributesRequest.builder()
+                    .queueUrl(queueUrl)
+                    .attributeNames(QueueAttributeName.ALL)
+                    .build();
+            sqsClient.getQueueAttributes(req);
+            log.info("init - SQS connectivity OK");
+        } catch (Exception e) {
+            log.error("init - Failed to validate SQS. Check endpoint/queueUrl. Error: {}", e.getMessage(), e);
+            return;
+        }
+
         if (running) return;
         running = true;
         pollingExecutor.submit(this::startPolling);
