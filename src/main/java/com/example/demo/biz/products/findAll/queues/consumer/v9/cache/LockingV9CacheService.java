@@ -3,7 +3,9 @@ package com.example.demo.biz.products.findAll.queues.consumer.v9.cache;
 import com.example.commons.dto.create.ProductResponseDto;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,6 +27,9 @@ public enum LockingV9CacheService {
         List<ProductResponseDto> products;
         boolean success;
         String message;
+
+        LocalDateTime unlockTime;
+        LocalDateTime lockTime = LocalDateTime.now();
     }
 
     public void putIfAbsent(String correlationId, List<ProductResponseDto> products) {
@@ -88,6 +93,13 @@ public enum LockingV9CacheService {
         cache.remove(correlationId);
     }
 
+    @Scheduled(fixedDelay = 5 * 60 * 1_000)
+    private void clean() {
+        log.info("clean - Cleaning cache for thread: {}", Thread.currentThread().getName());
+        cache.entrySet().removeIf(entry -> entry.getValue().completed);
+        cache.entrySet().removeIf(entry -> entry.getValue().unlockTime.isBefore(LocalDateTime.now().minusMinutes(5)));
+    }
+
     public boolean hasCorrelationId(String correlationId) {
         boolean exists = cache.containsKey(correlationId);
         log.debug("hasCorrelationId - correlationId: {}, in cache:{},  for thread: {}", correlationId, exists, Thread.currentThread().getName());
@@ -114,7 +126,6 @@ public enum LockingV9CacheService {
         LockStateVariables lockState = LockingV9CacheService.INSTANCE.cache.get(correlationId);
         lockState.setProducts(list);
     }
-
 
     public void lock(String correlationId) throws TimeoutException, InterruptedException {
         log.info("lock - correlationId: {}, Locking for thread: {}", correlationId, Thread.currentThread().getName());
@@ -156,6 +167,7 @@ public enum LockingV9CacheService {
         log.info("unlock - correlationId: {}, Unlocking for thread: {}", correlationId, Thread.currentThread().getName());
 
         var lockState = cache.computeIfAbsent(correlationId, k -> new LockStateVariables());
+        lockState.unlockTime = LocalDateTime.now();
 
         synchronized (lockState.monitor) {
             lockState.monitor.notifyAll();

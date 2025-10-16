@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -58,10 +59,13 @@ public class ProductFindAllSqsV9RestController {
             // mark completed only when we have a definitive result
             IdempotentRequestCache.INSTANCE.putIfAbsent(correlationId, IdempotentRequestCache.Status.COMPLETED);
 
-
-            // get products
             log.info("findAll - Getting products for correlationId: {}", correlationId);
+            long startTime = System.currentTimeMillis();
             List<ProductResponseDto> products = productFindAllSqsQueueV9Service.waitForResult(correlationId, 10L);
+            long elapsedTime = TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis() - startTime);
+
+            log.info("findAll - elapsed time to collect products: {} seconds", elapsedTime);
+
             if (products == null) {
                 log.warn("findAll - null products - No products found for correlationId: {} returning no content", correlationId);
                 return ResponseEntity.status(HttpStatus.NO_CONTENT).body(List.of());
